@@ -29,12 +29,18 @@ const (
 	Description = `
 	trade is a ssh -> telnet gateway with command shell and other features.
 
-	To start:
+	To start, generate a host key:
+
+		$ trade gen
+
+	Then, to run the proxy:
 
 		$ trade &
 
-	And connect to localhost:2002 over SSH. Pass the "-l" flag to specify a
-	listening address:
+	And connect to localhost:2002 over SSH. Once connected, press '?' for a list
+	of options.
+
+	Pass the "-l" flag to specify a listening address:
 	
 		$ trade -l :2002 & # listens on public addresses!
 
@@ -47,7 +53,7 @@ const (
 	UsageText = "trade [flags]"
 )
 
-var configPath = path.Join(os.Getenv("HOME"), ".trade")
+var configPath = path.Join(os.Getenv("HOME"), ".config/trade")
 var hostKeyPath = path.Join(configPath, "host_key")
 
 func main() {
