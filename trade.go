@@ -2,9 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
+	"path"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -41,6 +47,9 @@ const (
 	UsageText = "trade [flags]"
 )
 
+var configPath = path.Join(os.Getenv("HOME"), ".trade")
+var hostKeyPath = path.Join(configPath, "host_key")
+
 func main() {
 	app := cli.NewApp()
 
@@ -56,13 +65,66 @@ func main() {
 			Usage: "host:port of SSH listener",
 			Value: "localhost:2002",
 		},
+		cli.StringFlag{
+			Name:  "host-key,k",
+			Usage: "Path to host key",
+			Value: hostKeyPath,
+		},
+		cli.BoolFlag{
+			Name:  "auto-key,a",
+			Usage: "Auto-generate a host key for use",
+		},
 	}
 
 	app.Action = start
 
+	app.Commands = []cli.Command{
+		{
+			Name:      "generate-host-key",
+			ShortName: "gen",
+			Action:    generateHostKey,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "output,o",
+					Usage: "Output host key to this file",
+					Value: hostKeyPath,
+				},
+			},
+		},
+	}
+
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
+}
+
+func generateHostKey(cliCtx *cli.Context) error {
+	pk, err := genKey()
+	if err != nil {
+		return errors.Wrap(err, "while generating key")
+	}
+
+	derBytes, err := x509.MarshalECPrivateKey(pk)
+	if err != nil {
+		return errors.Wrap(err, "while converting key to x.509 format")
+	}
+
+	if _, err := os.Stat(cliCtx.String("output")); err != nil {
+		if err := os.MkdirAll(filepath.Dir(cliCtx.String("output")), 0700); err != nil {
+			return errors.Wrap(err, "while creating directory")
+		}
+	} else {
+		if err := os.Remove(cliCtx.String("output")); err != nil {
+			return errors.Wrap(err, "while clearing file to be replaced")
+		}
+	}
+
+	f, err := os.OpenFile(cliCtx.String("output"), unix.O_CREAT|unix.O_TRUNC|unix.O_WRONLY, 0400)
+	if err != nil {
+		return errors.Wrap(err, "while replacing file")
+	}
+
+	return pem.Encode(f, &pem.Block{Bytes: derBytes, Type: "ECDSA PRIVATE KEY"})
 }
 
 func start(cliCtx *cli.Context) error {
@@ -70,7 +132,28 @@ func start(cliCtx *cli.Context) error {
 		return errors.New("invalid args -- none should be provided")
 	}
 
-	signer, err := genSigner()
+	var pk *ecdsa.PrivateKey
+
+	if cliCtx.Bool("auto-key") {
+		var err error
+		pk, err = genKey()
+		if err != nil {
+			return errors.Wrap(err, "while generating key")
+		}
+	} else {
+		content, err := ioutil.ReadFile(cliCtx.GlobalString("host-key"))
+		if err != nil {
+			return errors.Wrap(err, "could not read host key")
+		}
+
+		b, _ := pem.Decode(content)
+		pk, err = x509.ParseECPrivateKey(b.Bytes)
+		if err != nil {
+			return errors.Wrap(err, "while parsing key")
+		}
+	}
+
+	signer, err := genSigner(pk)
 	if err != nil {
 		return errors.Wrap(err, "Could not generate host key")
 	}

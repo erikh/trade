@@ -27,11 +27,11 @@ type sshServer struct {
 	decoder *encoding.Decoder
 }
 
-func genSigner() (ssh.Signer, error) {
-	pk, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
+func genKey() (*ecdsa.PrivateKey, error) {
+	return ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+}
+
+func genSigner(pk *ecdsa.PrivateKey) (ssh.Signer, error) {
 	signer, err := ssh.NewSignerFromKey(pk)
 	if err != nil {
 		return nil, err
