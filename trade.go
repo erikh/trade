@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
-	"github.com/ziutek/telnet"
 	"golang.org/x/sys/unix"
 	"golang.org/x/text/encoding/charmap"
 )
@@ -26,9 +25,10 @@ const (
 
 	To start:
 
-		$ trade -l localhost:2002 &
+		$ trade example.org:2002 &
 
-	And connect to localhost:2002 over SSH.
+	And connect to localhost:2002 over SSH. Pass the "-l" flag to specify a
+	listening address.
 
 	For a listing of flags:
 
@@ -36,7 +36,7 @@ const (
 `
 
 	// UsageText is the argument format for the command. We simplify it here since there are no subcommands... yet!
-	UsageText = "trade [flags]"
+	UsageText = "trade [flags] [host:port]"
 )
 
 func main() {
@@ -64,11 +64,9 @@ func main() {
 }
 
 func start(cliCtx *cli.Context) error {
-	conn, err := telnet.Dial("tcp", "home.hollensbe.org:2002")
-	if err != nil {
-		return err
+	if len(cliCtx.Args()) != 1 {
+		return errors.New("invalid args: must supply a telnet host")
 	}
-	defer conn.Close()
 
 	signer, err := genSigner()
 	if err != nil {
@@ -95,27 +93,12 @@ func start(cliCtx *cli.Context) error {
 		return errors.Wrap(err, "Could not start SSH service")
 	}
 
-	go func() {
-		for {
-			buf := make([]byte, 32)
-			n, err := conn.Read(buf)
-			if err != nil {
-				conn.Close()
-				os.Exit(1)
-			}
+	tp, err := newTelnetProxy(cliCtx.Args()[0])
+	if err != nil {
+		return errors.Wrap(err, "could not connect")
+	}
 
-			outputChan <- buf[:n]
-		}
-	}()
-
-	go func() {
-		for byt := range inputChan {
-			if _, err := conn.Write(byt); err != nil {
-				conn.Close()
-				os.Exit(1)
-			}
-		}
-	}()
+	tp.start(ctx, inputChan, outputChan)
 
 	select {}
 }
