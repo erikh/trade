@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/ziutek/telnet"
@@ -40,6 +41,10 @@ func (tp *telnetProxy) start(ctx context.Context, input <-chan []byte, output ch
 	}()
 
 	for byt := range input {
+		// I guess we should consult the tty settings for this; but right now this
+		// works.
+		byt = bytes.ReplaceAll(byt, []byte{127}, []byte{8})
+
 		if _, err := tp.conn.Write(byt); err != nil {
 			tp.conn.Close()
 			break

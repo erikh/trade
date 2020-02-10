@@ -13,7 +13,7 @@ type menuProxy struct {
 }
 
 func prompt(s string) []byte {
-	return []byte(s + ": ")
+	return []byte("\r\n" + s + ": ")
 }
 
 func respond(s string) []byte {
@@ -33,11 +33,10 @@ func (mp *menuProxy) menu(output chan<- []byte) {
 ?: This menu
 C: Connect to a host:port pair
 S: Shutdown the proxy
-`)
+> `)
 }
 
-func (mp *menuProxy) connect(ctx context.Context, byt []byte, input chan []byte, output chan<- []byte) {
-	output <- prompt("Connect")
+func (mp *menuProxy) readline(byt []byte, input chan []byte, output chan<- []byte) string {
 	for !bytes.Contains(byt, []byte{'\r'}) {
 		byt2 := <-input
 		for {
@@ -64,26 +63,32 @@ func (mp *menuProxy) connect(ctx context.Context, byt []byte, input chan []byte,
 				pruned = true
 			}
 			if pruned {
-				fmt.Print(string([]byte{8}) + "\033[K")
+				output <- []byte{8, '\x1b', '[', 'K'}
 			}
 		}
 	end:
-		fmt.Print(string(byt2))
+		output <- byt2
 		byt = append(byt, byt2...)
 	}
 
 	parts := bytes.SplitN(byt, []byte{'\r'}, 2)
-	host := string(parts[0])
+	response := string(parts[0])
 	byt = parts[1]
 
+	go func() { input <- byt }()
+
+	return response
+}
+
+func (mp *menuProxy) connect(ctx context.Context, byt []byte, input chan []byte, output chan<- []byte) {
+	output <- prompt("Connect")
+	host := mp.readline(byt, input, output)
 	output <- respond(fmt.Sprintf("connecting to host: %v", host))
 	tp, err := newTelnetProxy(host)
 	if err != nil {
 		output <- respond(errors.Wrap(err, "could not connect").Error())
 		return
 	}
-
-	go func() { input <- byt }()
 	tp.start(ctx, input, output)
 }
 
@@ -113,7 +118,7 @@ func (mp *menuProxy) start(ctx context.Context, input chan []byte, output chan<-
 			case 'c', 'C':
 				mp.connect(ctx, byt[x+1:], input, output)
 			default:
-				output <- respond("invalid command")
+				mp.menu(output)
 			}
 		}
 	}
