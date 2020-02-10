@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"fmt"
 	"net"
 	"sync"
 
@@ -87,11 +86,9 @@ func (s *sshServer) start(ctx context.Context) error {
 			for i, c := range s.chans {
 				n, err := c.Write(byt)
 				if err != nil {
-					fmt.Println("prune", err)
 					goto prune
 				}
 				if n != len(byt) {
-					fmt.Println("n!=len prune")
 					goto prune
 				}
 

@@ -25,10 +25,12 @@ const (
 
 	To start:
 
-		$ trade example.org:2002 &
+		$ trade &
 
 	And connect to localhost:2002 over SSH. Pass the "-l" flag to specify a
-	listening address.
+	listening address:
+	
+		$ trade -l :2002 & # listens on public addresses!
 
 	For a listing of flags:
 
@@ -36,7 +38,7 @@ const (
 `
 
 	// UsageText is the argument format for the command. We simplify it here since there are no subcommands... yet!
-	UsageText = "trade [flags] [host:port]"
+	UsageText = "trade [flags]"
 )
 
 func main() {
@@ -64,8 +66,8 @@ func main() {
 }
 
 func start(cliCtx *cli.Context) error {
-	if len(cliCtx.Args()) != 1 {
-		return errors.New("invalid args: must supply a telnet host")
+	if len(cliCtx.Args()) != 0 {
+		return errors.New("invalid args -- none should be provided")
 	}
 
 	signer, err := genSigner()
@@ -93,12 +95,8 @@ func start(cliCtx *cli.Context) error {
 		return errors.Wrap(err, "Could not start SSH service")
 	}
 
-	tp, err := newTelnetProxy(cliCtx.Args()[0])
-	if err != nil {
-		return errors.Wrap(err, "could not connect")
-	}
+	mp := newMenuProxy()
+	mp.start(ctx, inputChan, outputChan)
 
-	tp.start(ctx, inputChan, outputChan)
-
-	select {}
+	return nil
 }

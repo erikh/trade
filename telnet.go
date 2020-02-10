@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 
 	"github.com/ziutek/telnet"
 )
@@ -33,19 +32,17 @@ func (tp *telnetProxy) start(ctx context.Context, input <-chan []byte, output ch
 			n, err := tp.conn.Read(buf)
 			if err != nil {
 				tp.conn.Close()
-				os.Exit(1)
+				break
 			}
 
 			output <- buf[:n]
 		}
 	}()
 
-	go func() {
-		for byt := range input {
-			if _, err := tp.conn.Write(byt); err != nil {
-				tp.conn.Close()
-				os.Exit(1)
-			}
+	for byt := range input {
+		if _, err := tp.conn.Write(byt); err != nil {
+			tp.conn.Close()
+			break
 		}
-	}()
+	}
 }
