@@ -3,8 +3,10 @@
 trade is intended to connect to Tradewars 2002 servers. It performs a number of
 features which make tradewars playable on a modern computer:
 
-<center><img src="example.png" /></center>
-<small>(inside alacritty with standard ssh)</small>
+<center>
+  <img src="example.png" />
+  <caption>(inside alacritty with standard ssh)</caption>
+</center>
 
 * Multiple connections, same proxy -- all connections route to the same telnet
   session.
