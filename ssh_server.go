@@ -141,6 +141,8 @@ func (s *sshServer) start(ctx context.Context) error {
 						if err != nil {
 							continue
 						}
+					} else {
+						byt = byt[:n]
 					}
 
 					s.inputChannel <- byt
