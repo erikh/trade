@@ -5,8 +5,8 @@ features which make tradewars playable on a modern computer:
 
 <img src="example.png" />
 
-This image is taken from a standard openssh connection through `trade` inside
-of `alacritty`.
+This image is taken from a standard SSH connection through `trade` inside
+of `putty`.
 
 Some features of `trade`:
 
