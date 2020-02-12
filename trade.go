@@ -184,7 +184,7 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	mp := newMenuProxy()
-	mp.start(ctx, inputChan, outputChan)
+	mp.start(ctx, inputChan, outputChan, s)
 
 	return nil
 }

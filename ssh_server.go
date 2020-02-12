@@ -18,7 +18,7 @@ type sshServer struct {
 	listenAddr string
 	chans      []ssh.Channel
 	conns      []*ssh.ServerConn
-	mutex      sync.Mutex
+	mutex      sync.RWMutex
 
 	inputChannel  chan<- []byte
 	outputChannel <-chan []byte
@@ -58,6 +58,12 @@ func newSSHServer(listener string, signer ssh.Signer) *sshServer {
 func (s *sshServer) setCodec(cm *charmap.Charmap) {
 	s.encoder = cm.NewEncoder()
 	s.decoder = cm.NewDecoder()
+}
+
+func (s *sshServer) connections() int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return len(s.conns)
 }
 
 func (s *sshServer) setChans(input chan<- []byte, output <-chan []byte) {

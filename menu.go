@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -92,7 +93,25 @@ func (mp *menuProxy) connect(ctx context.Context, byt []byte, input chan []byte,
 	tp.start(ctx, input, output)
 }
 
-func (mp *menuProxy) start(ctx context.Context, input chan []byte, output chan<- []byte) {
+func (mp *menuProxy) start(ctx context.Context, input chan []byte, output chan<- []byte, ssh *sshServer) {
+	go func() {
+		var last int
+		for {
+			n := ssh.connections()
+			if n != last {
+				output <- respond("user connected")
+			}
+
+			if last == 0 && n != 0 {
+				mp.menu(output)
+			}
+
+			last = n
+
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
 	for byt := range input {
 		select {
 		case <-ctx.Done():
