@@ -169,7 +169,6 @@ func start(cliCtx *cli.Context) error {
 	go func() {
 		<-sigChan
 		cancel()
-		os.Exit(0)
 	}()
 	signal.Notify(sigChan, unix.SIGTERM, unix.SIGINT)
 
