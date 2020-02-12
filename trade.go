@@ -80,6 +80,10 @@ func main() {
 			Name:  "auto-key,a",
 			Usage: "Auto-generate a host key for use",
 		},
+		cli.BoolTFlag{
+			Name:  "use-dos,d",
+			Usage: "Use DOS codepage 437 for translation",
+		},
 	}
 
 	app.Action = start
@@ -177,7 +181,9 @@ func start(cliCtx *cli.Context) error {
 	inputChan := make(chan []byte)
 	outputChan := make(chan []byte)
 	s.setChans(inputChan, outputChan)
-	s.setCodec(charmap.CodePage437)
+	if cliCtx.BoolT("use-dos") {
+		s.setCodec(charmap.CodePage437)
+	}
 
 	if err := s.start(ctx); err != nil {
 		return errors.Wrap(err, "Could not start SSH service")
