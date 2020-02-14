@@ -178,9 +178,11 @@ func start(cliCtx *cli.Context) error {
 
 	s := newSSHServer(cliCtx.GlobalString("listen"), signer)
 
-	inputChan := make(chan []byte)
+	inputChan := make(chan []byte, 1)
 	outputChan := make(chan []byte)
+
 	s.setChans(inputChan, outputChan)
+
 	if cliCtx.BoolT("use-dos") {
 		s.setCodec(charmap.CodePage437)
 	}
@@ -189,8 +191,8 @@ func start(cliCtx *cli.Context) error {
 		return errors.Wrap(err, "Could not start SSH service")
 	}
 
-	mp := newMenuProxy()
-	mp.start(ctx, inputChan, outputChan, s)
+	mp := newMenuProxy(inputChan, outputChan)
+	mp.start(ctx)
 
 	return nil
 }

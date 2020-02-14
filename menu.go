@@ -5,12 +5,22 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/pkg/errors"
 )
 
 type menuProxy struct {
+	connected  bool
+	menuActive bool
+	mutex      sync.Mutex
+
+	pInput  chan []byte
+	pOutput chan []byte
+
+	// "connected" channels. that's what the c means. exciting eh?
+	cInput  chan []byte
+	cOutput chan []byte
 }
 
 func prompt(s string) []byte {
@@ -21,8 +31,13 @@ func respond(s string) []byte {
 	return []byte(s + "\r\n")
 }
 
-func newMenuProxy() *menuProxy {
-	return &menuProxy{}
+func newMenuProxy(input, output chan []byte) *menuProxy {
+	return &menuProxy{
+		pInput:  input,
+		pOutput: output,
+		cInput:  make(chan []byte, 1),
+		cOutput: make(chan []byte),
+	}
 }
 
 func newlineify(s string) []byte {
@@ -30,16 +45,24 @@ func newlineify(s string) []byte {
 }
 
 func (mp *menuProxy) menu(output chan<- []byte) {
-	output <- newlineify(`
+	if mp.connected {
+		output <- newlineify(`
+?: This menu
+R: Re-attach to the proxy
+S: Shutdown the proxy
+> `)
+	} else {
+		output <- newlineify(`
 ?: This menu
 C: Connect to a host:port pair
 S: Shutdown the proxy
 > `)
+	}
 }
 
-func (mp *menuProxy) readline(byt []byte, input chan []byte, output chan<- []byte) string {
+func (mp *menuProxy) readline(byt []byte) string {
 	for !bytes.Contains(byt, []byte{'\r'}) {
-		byt2 := <-input
+		byt2 := <-mp.pInput
 		for {
 			pruned := false
 			idx := bytes.Index(byt2, []byte{127})
@@ -64,11 +87,11 @@ func (mp *menuProxy) readline(byt []byte, input chan []byte, output chan<- []byt
 				pruned = true
 			}
 			if pruned {
-				output <- []byte{8, '\x1b', '[', 'K'}
+				mp.pOutput <- []byte{8, '\x1b', '[', 'K'}
 			}
 		}
 	end:
-		output <- byt2
+		mp.pOutput <- byt2
 		byt = append(byt, byt2...)
 	}
 
@@ -76,69 +99,129 @@ func (mp *menuProxy) readline(byt []byte, input chan []byte, output chan<- []byt
 	response := string(parts[0])
 	byt = parts[1]
 
-	go func() { input <- byt }()
+	go func() { mp.pInput <- byt }()
 
 	return response
 }
 
-func (mp *menuProxy) connect(ctx context.Context, byt []byte, input chan []byte, output chan<- []byte) {
-	output <- prompt("Connect")
-	host := mp.readline(byt, input, output)
-	output <- respond(fmt.Sprintf("connecting to host: %v", host))
-	tp, err := newTelnetProxy(host)
-	if err != nil {
-		output <- respond(errors.Wrap(err, "could not connect").Error())
-		return
-	}
-	tp.start(ctx, input, output)
+func (mp *menuProxy) toggleConnected() {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	mp.connected = !mp.connected
 }
 
-func (mp *menuProxy) start(ctx context.Context, input chan []byte, output chan<- []byte, ssh *sshServer) {
+func (mp *menuProxy) establishConnection(ctx context.Context) {
+	mp.mutex.Lock()
+	defer mp.mutex.Unlock()
+	mp.connected = true
+
 	go func() {
-		var last int
+		defer func() {
+			close(mp.cInput)
+			close(mp.cOutput)
+			close(mp.pOutput)
+			close(mp.pInput)
+		}()
 		for {
-			n := ssh.connections()
-			if n != last {
-				output <- respond("user connected")
+			select {
+			case <-ctx.Done():
+				return
+			case buf := <-mp.cOutput:
+				mp.pOutput <- buf
+			case buf := <-mp.pInput:
+				if mp.menuActive {
+					if mp.readMenu(ctx, buf, mp.pOutput, mp.pInput) {
+						return
+					}
+				} else {
+					i := bytes.Index(buf, []byte{0x5})
+					if i >= 0 {
+						mp.mutex.Lock()
+						mp.menuActive = true
+						mp.mutex.Unlock()
+
+						mp.menu(mp.pOutput)
+
+						if len(buf) > i {
+							if mp.readMenu(ctx, buf[i+1:], mp.pOutput, mp.pInput) {
+								return
+							}
+						}
+					} else {
+						mp.cInput <- buf
+					}
+				}
 			}
-
-			if last == 0 && n != 0 {
-				mp.menu(output)
-			}
-
-			last = n
-
-			time.Sleep(100 * time.Millisecond)
 		}
 	}()
+}
 
-	for byt := range input {
+func (mp *menuProxy) connect(ctx context.Context, byt []byte) {
+	mp.pOutput <- prompt("Connect")
+	host := mp.readline(byt)
+	mp.pOutput <- respond(fmt.Sprintf("connecting to host: %v", host))
+	tp, err := newTelnetProxy(host)
+	if err != nil {
+		mp.pOutput <- respond(errors.Wrap(err, "could not connect").Error())
+		return
+	}
+
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithCancel(ctx)
+	defer cancel()
+
+	mp.establishConnection(ctx)
+	tp.start(ctx, mp.cInput, mp.cOutput)
+}
+
+func (mp *menuProxy) start(ctx context.Context) {
+	for byt := range mp.pInput {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		for x := 0; x < len(byt); x++ {
-			b := byt[x]
-
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			switch b {
-			case '?':
-				mp.menu(output)
-			case 's', 'S':
-				output <- respond("shutting down")
-				return
-			case 'c', 'C':
-				mp.connect(ctx, byt[x+1:], input, output)
-			default:
-				mp.menu(output)
-			}
+		if mp.readMenu(ctx, byt, mp.pOutput, mp.pInput) {
+			return
 		}
 	}
+}
+
+func (mp *menuProxy) readMenu(ctx context.Context, byt []byte, output, input chan []byte) bool {
+	for x := 0; x < len(byt); x++ {
+		b := byt[x]
+
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+		}
+
+		switch b {
+		case '?':
+			mp.menu(output)
+		case 's', 'S':
+			output <- respond("shutting down")
+			return true
+		case 'c', 'C':
+			mp.mutex.Lock()
+			connected := mp.connected
+			mp.mutex.Unlock()
+			if !connected {
+				mp.connect(ctx, byt[x+1:])
+			}
+		case 'r', 'R':
+			mp.mutex.Lock()
+			if mp.connected {
+				mp.menuActive = false
+			}
+			mp.mutex.Unlock()
+			output <- respond("reattached")
+		default:
+			mp.menu(output)
+		}
+	}
+
+	return false
 }
