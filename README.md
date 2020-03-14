@@ -16,7 +16,7 @@ Some features of `trade`:
   Works great with putty default settings over SSH, or most modern terminals
   with openssh.
 * operates over SSH (telnet is still used to connect to tradewars)
-* Menu for controlling your sessions (no escape key yet, though!)
+* Menu for controlling your sessions (press `^E` in a session to escape to the menu)
 * *COMING SOON* expect-like scripting capabilities with mruby
 * *COMING SOON* outbound ssh support for controlling things that are not tradewars!
 
