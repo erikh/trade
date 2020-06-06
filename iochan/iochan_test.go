@@ -86,37 +86,39 @@ func BenchmarkProxy(b *testing.B) {
 
 	go io.Copy(w, r)
 
-	test := func(b *testing.B) {
+	test := func(b *testing.B, size int) {
 		for i := 0; i < b.N; i++ {
-			buf := bytes.Repeat([]byte{0, 1}, 32) // 64B buffer
+			buf := bytes.Repeat([]byte{0, 1}, size) // size*2 buffer
 			input <- buf
 
-			tmp := bytes.Repeat([]byte{0, 1}, 32) // 64B buffer
-			result := []byte{}
-			for len(tmp) > 0 {
+			// this keeps the first and last byte of the response, respectively, so
+			// they can be compared later. This avoids a nasty array
+			// traversal+compare during the benchmark, keeping numbers relatively
+			// even for different buffer sizes.
+			var resultPair [2]byte
+			for i := 0; i < size*2; i++ {
 				out := <-output
-				result = append(result, out...)
-
-				if len(out) < len(tmp) {
-					tmp = tmp[len(out):]
-				} else {
-					break
+				if i == 0 {
+					resultPair[0] = out[0]
 				}
+
+				resultPair[1] = out[len(out)-1]
+				i += len(out) - 1
 			}
 
-			if !bytes.Equal(result, buf) {
-				b.Logf("buffers were not equal: %v %v", buf, result)
+			if resultPair[0] != 0 || resultPair[1] != 1 {
+				b.Log("buffers were not equal")
 				b.FailNow()
 			}
 		}
 	}
 
-	b.Run("default allocation", test)
+	b.Run("default allocation", func(b *testing.B) { test(b, defaultReadBufSize) })
 
-	for _, size := range []int{64, 256, 1024, 4096, 32768} {
+	for _, size := range []int{64, 256, 1024, 4096} {
 		b.Run(fmt.Sprintf("%d allocation", size), func(b *testing.B) {
 			p.SetReadBufSize(size)
-			test(b)
+			test(b, size)
 		})
 	}
 }
