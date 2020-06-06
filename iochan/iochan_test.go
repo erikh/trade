@@ -3,6 +3,7 @@ package iochan
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -85,23 +86,37 @@ func BenchmarkProxy(b *testing.B) {
 
 	go io.Copy(w, r)
 
-	for i := 0; i < b.N; i++ {
-		buf := bytes.Repeat([]byte{0, 1}, 32) // 64B buffer
-		input <- buf
+	test := func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			buf := bytes.Repeat([]byte{0, 1}, 32) // 64B buffer
+			input <- buf
 
-		tmp := bytes.Repeat([]byte{0, 1}, 32) // 64B buffer
-		for len(tmp) > 0 {
-			out := <-output
-			if !bytes.Equal(out, tmp[:len(out)]) {
-				b.Logf("buffers were not equal: %v %v", tmp, out)
+			tmp := bytes.Repeat([]byte{0, 1}, 32) // 64B buffer
+			result := []byte{}
+			for len(tmp) > 0 {
+				out := <-output
+				result = append(result, out...)
+
+				if len(out) < len(tmp) {
+					tmp = tmp[len(out):]
+				} else {
+					break
+				}
+			}
+
+			if !bytes.Equal(result, buf) {
+				b.Logf("buffers were not equal: %v %v", buf, result)
 				b.FailNow()
 			}
-
-			if len(out) < len(tmp) {
-				tmp = tmp[len(out):]
-			} else {
-				break
-			}
 		}
+	}
+
+	b.Run("default allocation", test)
+
+	for _, size := range []int{64, 256, 1024, 4096, 32768} {
+		b.Run(fmt.Sprintf("%d allocation", size), func(b *testing.B) {
+			p.SetReadBufSize(size)
+			test(b)
+		})
 	}
 }
