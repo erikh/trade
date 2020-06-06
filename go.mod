@@ -3,8 +3,10 @@ module github.com/erikh/trade
 go 1.13
 
 require (
+	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/cpuguy83/go-md2man/v2 v2.0.0 // indirect
 	github.com/pkg/errors v0.9.1
+	github.com/sirupsen/logrus v1.6.0
 	github.com/urfave/cli v1.22.2
 	github.com/ziutek/telnet v0.0.0-20180329124119-c3b780dc415b
 	golang.org/x/crypto v0.0.0-20200208060501-ecb85df21340
