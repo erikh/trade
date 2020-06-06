@@ -87,8 +87,9 @@ func BenchmarkProxy(b *testing.B) {
 	go io.Copy(w, r)
 
 	test := func(b *testing.B, size int) {
+		buf := bytes.Repeat([]byte{0, 1}, size) // size*2 buffer
+
 		for i := 0; i < b.N; i++ {
-			buf := bytes.Repeat([]byte{0, 1}, size) // size*2 buffer
 			input <- buf
 
 			// this keeps the first and last byte of the response, respectively, so
