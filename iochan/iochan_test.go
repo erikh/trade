@@ -87,7 +87,7 @@ func BenchmarkProxy(b *testing.B) {
 	go io.Copy(w, r)
 
 	test := func(b *testing.B, size int) {
-		buf := bytes.Repeat([]byte{0, 1}, size) // size*2 buffer
+		buf := bytes.Repeat([]byte{0, 1}, size/2)
 
 		for i := 0; i < b.N; i++ {
 			input <- buf
@@ -97,7 +97,7 @@ func BenchmarkProxy(b *testing.B) {
 			// traversal+compare during the benchmark, keeping numbers relatively
 			// even for different buffer sizes.
 			var resultPair [2]byte
-			for i := 0; i < size*2; i++ {
+			for i := 0; i < size; i++ {
 				out := <-output
 				if i == 0 {
 					resultPair[0] = out[0]
