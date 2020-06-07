@@ -37,17 +37,17 @@ func (p *Proxy) Start(ctx context.Context) {
 	go func() {
 		for {
 			select {
-			case <-ctx.Done():
-				return
-			default:
-				buf := <-p.Input
+			case buf := <-p.Input:
 				if _, err := p.Writer.Write(buf); err != nil {
-					if err != io.EOF {
+					if err != io.EOF && err != io.ErrClosedPipe {
 						logrus.Errorf("iochan: failed to write to writer: %v", err)
 					}
 
+					p.Output <- buf
 					return
 				}
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
@@ -60,14 +60,18 @@ func (p *Proxy) Start(ctx context.Context) {
 			buf := make([]byte, p.readBufSize)
 			n, err := p.Reader.Read(buf)
 			if err != nil {
-				if err != io.EOF {
+				if err != io.EOF && err != io.ErrClosedPipe {
 					logrus.Errorf("read error: %v", err)
 				}
 
 				return
 			}
 
-			p.Output <- buf[:n]
+			select {
+			case p.Output <- buf[:n]:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 }
